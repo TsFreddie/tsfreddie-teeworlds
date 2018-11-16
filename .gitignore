@@ -12,3 +12,6 @@ scripts/work/
 /freetype.dll
 /autoexec.cfg
 _test.exe
+
+# windows peasant using ide
+.vscode
