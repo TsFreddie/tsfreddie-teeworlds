@@ -320,6 +320,9 @@ void CPlayer::KillCharacter(int Weapon)
 {
 	if(m_pCharacter)
 	{
+		if (Weapon == WEAPON_SELF && m_pCharacter->isFrozen()) {
+			return;
+		}
 		m_pCharacter->Die(m_ClientID, Weapon);
 		delete m_pCharacter;
 		m_pCharacter = 0;

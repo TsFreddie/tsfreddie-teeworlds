@@ -287,6 +287,7 @@ bool IGameController::OnEntity(int Index, vec2 Pos)
 	case ENTITY_SPAWN_BLUE:
 		m_aaSpawnPoints[2][m_aNumSpawnPoints[2]++] = Pos;
 		break;
+	/* : no pickup
 	case ENTITY_ARMOR_1:
 		Type = PICKUP_ARMOR;
 		break;
@@ -305,6 +306,7 @@ bool IGameController::OnEntity(int Index, vec2 Pos)
 	case ENTITY_POWERUP_NINJA:
 		if(g_Config.m_SvPowerups)
 			Type = PICKUP_NINJA;
+	*/
 	}
 
 	if(Type != -1)

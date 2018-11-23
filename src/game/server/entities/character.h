@@ -58,6 +58,14 @@ public:
 	bool IsAlive() const { return m_Alive; }
 	class CPlayer *GetPlayer() { return m_pPlayer; }
 
+	// FNG
+	void Freeze(int From, int Weapon);
+	void Melt(int From);
+	void Defrost();
+	void HandleFrost();
+	bool isFrozen() { return m_Frozen; };
+	void HandleHook();
+
 private:
 	// player controlling this character
 	class CPlayer *m_pPlayer;
@@ -124,6 +132,14 @@ private:
 	int m_ReckoningTick; // tick that we are performing dead reckoning From
 	CCharacterCore m_SendCore; // core that we should send
 	CCharacterCore m_ReckoningCore; // the dead reckoning core
+	
+	// FNG
+	bool m_Frozen;
+	int m_FreezeStartTick;
+	void EatInput(CNetObj_PlayerInput *Input);
+
+	int m_AlterKiller;
+	void DieInAlter(int Collision);
 
 };
 

@@ -2,6 +2,8 @@
 /* If you are missing that file, acquire a complete release at teeworlds.com.                */
 #include <generated/server_data.h>
 #include <game/server/gamecontext.h>
+#include <game/server/gamecontroller.h>
+#include <game/server/player.h>
 
 #include "character.h"
 #include "laser.h"
@@ -23,14 +25,43 @@ bool CLaser::HitCharacter(vec2 From, vec2 To)
 {
 	vec2 At;
 	CCharacter *pOwnerChar = GameServer()->GetPlayerChar(m_Owner);
-	CCharacter *pHit = GameServer()->m_World.IntersectCharacter(m_Pos, To, 0.f, At, pOwnerChar);
+	CCharacter *pHit = NULL;
+
+	// FNG: Skip character
+	CCharacter *pScanChar = pOwnerChar;
+	vec2 Pos = m_Pos;
+	while (length(From-Pos) + length(Pos-To) < length(From-To)+ 1e-5)
+	{
+		pScanChar = GameServer()->m_World.IntersectCharacter(Pos, To, 0.f, At, pScanChar);
+		if (!pScanChar)
+			break;
+		Pos = At + normalize(To-From)*(pScanChar->GetProximityRadius()+ 1e-5);
+
+		// TODO: Config Skip Frozen
+		if(pScanChar->isFrozen())
+			continue;
+
+		if (pScanChar == pOwnerChar)
+			continue;
+
+		// TODO: Config Skip Teammate
+		if (GameServer()->m_pController->IsFriendlyFire(pScanChar->GetPlayer()->GetCID(), m_Owner))
+			continue;
+
+		pHit = pScanChar;
+		break;
+	}
+
 	if(!pHit)
 		return false;
 
 	m_From = From;
 	m_Pos = At;
 	m_Energy = -1;
-	pHit->TakeDamage(vec2(0.f, 0.f), g_pData->m_Weapons.m_aId[WEAPON_LASER].m_Damage, m_Owner, WEAPON_LASER);
+	
+	// FNG
+	pHit->Freeze(m_Owner, WEAPON_LASER);
+	//pHit->TakeDamage(vec2(0.f, 0.f), g_pData->m_Weapons.m_aId[WEAPON_LASER].m_Damage, m_Owner, WEAPON_LASER);
 	return true;
 }
 

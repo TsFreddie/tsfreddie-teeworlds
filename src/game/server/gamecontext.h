@@ -130,6 +130,9 @@ public:
 	void CreateDeath(vec2 Pos, int Who);
 	void CreateSound(vec2 Pos, int Sound, int Mask=-1);
 
+	// fng
+	void CreateSoundGlobal(int Sound);
+
 	// network
 	void SendChat(int ChatterClientID, int Mode, int To, const char *pText);
 	void SendEmoticon(int ClientID, int Emoticon);

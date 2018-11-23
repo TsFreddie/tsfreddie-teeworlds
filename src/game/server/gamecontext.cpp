@@ -18,6 +18,7 @@
 #include "gamemodes/mod.h"
 #include "gamemodes/sur.h"
 #include "gamemodes/tdm.h"
+#include "gamemodes/fng.h"
 #include "gamecontext.h"
 #include "player.h"
 
@@ -188,6 +189,25 @@ void CGameContext::CreateSound(vec2 Pos, int Sound, int Mask)
 		pEvent->m_X = (int)Pos.x;
 		pEvent->m_Y = (int)Pos.y;
 		pEvent->m_SoundID = Sound;
+	}
+}
+
+void CGameContext::CreateSoundGlobal(int Sound)
+{
+	if (Sound < 0)
+		return;
+
+	for (int i = 0; i < MAX_CLIENTS; i++) {
+		if (m_apPlayers[i]) {
+			int Mask = CmaskOne(i);
+			CNetEvent_SoundWorld *pEvent = (CNetEvent_SoundWorld *)m_Events.Create(NETEVENTTYPE_SOUNDWORLD, sizeof(CNetEvent_SoundWorld), Mask);
+			if(pEvent)
+			{
+				pEvent->m_X = (int)m_apPlayers[i]->m_ViewPos.x;
+				pEvent->m_Y = (int)m_apPlayers[i]->m_ViewPos.y;
+				pEvent->m_SoundID = Sound;
+			}
+		}
 	}
 }
 
@@ -1416,6 +1436,13 @@ void CGameContext::OnInit()
 	m_Collision.Init(&m_Layers);
 
 	// select gametype
+	// FNG: modes
+	if(str_comp_nocase(g_Config.m_SvGametype, "fng") == 0)
+		m_pController = new CGameControllerFNG(this);
+	else
+		m_pController = new CGameControllerFNG(this);
+
+	/*
 	if(str_comp_nocase(g_Config.m_SvGametype, "mod") == 0)
 		m_pController = new CGameControllerMOD(this);
 	else if(str_comp_nocase(g_Config.m_SvGametype, "ctf") == 0)
@@ -1428,6 +1455,7 @@ void CGameContext::OnInit()
 		m_pController = new CGameControllerTDM(this);
 	else
 		m_pController = new CGameControllerDM(this);
+	*/
 
 	// create all entities from the game layer
 	CMapItemLayerTilemap *pTileMap = m_Layers.GameLayer();

@@ -66,6 +66,10 @@ bool CCharacter::Spawn(CPlayer *pPlayer, vec2 Pos)
 	m_pPlayer = pPlayer;
 	m_Pos = Pos;
 
+	// FNG
+	m_Frozen = false;
+	m_AlterKiller = -1;
+
 	m_Core.Reset();
 	m_Core.Init(&GameServer()->m_World.m_Core, GameServer()->Collision());
 	m_Core.m_Pos = m_Pos;
@@ -320,8 +324,16 @@ void CCharacter::FireWeapon()
 				else
 					Dir = vec2(0.f, -1.f);
 
-				pTarget->TakeDamage(vec2(0.f, -1.f) + normalize(Dir + vec2(0.f, -1.1f)) * 10.0f, g_pData->m_Weapons.m_Hammer.m_pBase->m_Damage,
-					m_pPlayer->GetCID(), m_ActiveWeapon);
+				// FNG: hammer force
+				Dir = vec2(0.f, -1.f) + normalize(Dir + vec2(0.f, -1.1f)) * 10.0f;
+
+				Dir.x *= 3.2f;
+				Dir.y *= 1.2f;
+				pTarget->m_Core.m_Vel += Dir;
+				pTarget->m_AlterKiller = m_pPlayer->GetCID();
+
+				//pTarget->TakeDamage(vec2(0.f, -1.f) + normalize(Dir + vec2(0.f, -1.1f)) * 10.0f, g_pData->m_Weapons.m_Hammer.m_pBase->m_Damage,
+				//	m_pPlayer->GetCID(), m_ActiveWeapon);
 				Hits++;
 			}
 
@@ -383,6 +395,7 @@ void CCharacter::FireWeapon()
 			GameServer()->CreateSound(m_Pos, SOUND_LASER_FIRE);
 		} break;
 
+		/* FNG: no ninja weapon;
 		case WEAPON_NINJA:
 		{
 			// reset Hit objects
@@ -394,6 +407,7 @@ void CCharacter::FireWeapon()
 
 			GameServer()->CreateSound(m_Pos, SOUND_NINJA_FIRE);
 		} break;
+		*/
 
 	}
 
@@ -409,7 +423,8 @@ void CCharacter::FireWeapon()
 void CCharacter::HandleWeapons()
 {
 	//ninja
-	HandleNinja();
+	// HandleNinja();
+	HandleFrost();
 
 	// check reload timer
 	if(m_ReloadTimer)
@@ -491,6 +506,9 @@ void CCharacter::OnPredictedInput(CNetObj_PlayerInput *pNewInput)
 	// it is not allowed to aim in the center
 	if(m_Input.m_TargetX == 0 && m_Input.m_TargetY == 0)
 		m_Input.m_TargetY = -1;
+
+	// FNG
+	EatInput(&m_Input);
 }
 
 void CCharacter::OnDirectInput(CNetObj_PlayerInput *pNewInput)
@@ -501,6 +519,9 @@ void CCharacter::OnDirectInput(CNetObj_PlayerInput *pNewInput)
 	// it is not allowed to aim in the center
 	if(m_LatestInput.m_TargetX == 0 && m_LatestInput.m_TargetY == 0)
 		m_LatestInput.m_TargetY = -1;
+
+	// FNG
+	EatInput(&m_LatestInput);
 
 	if(m_NumInputs > 2 && m_pPlayer->GetTeam() != TEAM_SPECTATORS)
 	{
@@ -529,17 +550,24 @@ void CCharacter::Tick()
 	m_Core.Tick(true);
 
 	// handle death-tiles and leaving gamelayer
-	if(GameServer()->Collision()->GetCollisionAt(m_Pos.x+GetProximityRadius()/3.f, m_Pos.y-GetProximityRadius()/3.f)&CCollision::COLFLAG_DEATH ||
-		GameServer()->Collision()->GetCollisionAt(m_Pos.x+GetProximityRadius()/3.f, m_Pos.y+GetProximityRadius()/3.f)&CCollision::COLFLAG_DEATH ||
-		GameServer()->Collision()->GetCollisionAt(m_Pos.x-GetProximityRadius()/3.f, m_Pos.y-GetProximityRadius()/3.f)&CCollision::COLFLAG_DEATH ||
-		GameServer()->Collision()->GetCollisionAt(m_Pos.x-GetProximityRadius()/3.f, m_Pos.y+GetProximityRadius()/3.f)&CCollision::COLFLAG_DEATH ||
+	int CollisionFlag = 0;
+	if((CollisionFlag = GameServer()->Collision()->GetCollisionAt(m_Pos.x+GetProximityRadius()/3.f, m_Pos.y-GetProximityRadius()/3.f))&CCollision::COLFLAG_DEATH ||
+		(CollisionFlag = GameServer()->Collision()->GetCollisionAt(m_Pos.x+GetProximityRadius()/3.f, m_Pos.y+GetProximityRadius()/3.f))&CCollision::COLFLAG_DEATH ||
+		(CollisionFlag = GameServer()->Collision()->GetCollisionAt(m_Pos.x-GetProximityRadius()/3.f, m_Pos.y-GetProximityRadius()/3.f))&CCollision::COLFLAG_DEATH ||
+		(CollisionFlag = GameServer()->Collision()->GetCollisionAt(m_Pos.x-GetProximityRadius()/3.f, m_Pos.y+GetProximityRadius()/3.f))&CCollision::COLFLAG_DEATH ||
 		GameLayerClipped(m_Pos))
 	{
-		Die(m_pPlayer->GetCID(), WEAPON_WORLD);
+		int AlterFlag = CollisionFlag&(CCollision::COLFLAG_ALTAR|CCollision::COLFLAG_ALTAR_RED|CCollision::COLFLAG_ALTAR_BLUE);
+		if (AlterFlag) {
+			DieInAlter(AlterFlag);
+		} else {
+			Die(m_pPlayer->GetCID(), WEAPON_WORLD);
+		}
 	}
 
 	// handle Weapons
 	HandleWeapons();
+	HandleHook();
 }
 
 void CCharacter::TickDefered()
@@ -837,4 +865,142 @@ void CCharacter::Snap(int SnappingClient)
 void CCharacter::PostSnap()
 {
 	m_TriggeredEvents = 0;
+}
+
+// FNG
+void CCharacter::EatInput(CNetObj_PlayerInput *Input)
+{
+	if (m_Frozen) {
+		Input->m_Direction = 0;
+		Input->m_Hook = 0;
+		Input->m_Jump = 0;
+	}
+}
+
+void CCharacter::Freeze(int From, int Weapon)
+{
+	if (m_Frozen)
+		return;
+
+	m_Frozen = true;
+	m_FreezeStartTick = Server()->Tick();
+	m_Ninja.m_ActivationTick = m_FreezeStartTick;
+	m_Ninja.m_CurrentMoveTime = -1;
+	m_aWeapons[WEAPON_NINJA].m_Got = true;
+	m_aWeapons[WEAPON_NINJA].m_Ammo = -1;
+	if (m_ActiveWeapon != WEAPON_NINJA)
+		m_LastWeapon = m_ActiveWeapon;
+	m_ActiveWeapon = WEAPON_NINJA;
+
+	// do damage Hit sound
+	if(From >= 0 && From != m_pPlayer->GetCID() && GameServer()->m_apPlayers[From])
+	{
+		int Mask = CmaskOne(From);
+		for(int i = 0; i < MAX_CLIENTS; i++)
+		{
+			if(GameServer()->m_apPlayers[i] && (GameServer()->m_apPlayers[i]->GetTeam() == TEAM_SPECTATORS ||  GameServer()->m_apPlayers[i]->m_DeadSpecMode) &&
+				GameServer()->m_apPlayers[i]->GetSpectatorID() == From)
+				Mask |= CmaskOne(i);
+		}
+		GameServer()->CreateSound(GameServer()->m_apPlayers[From]->m_ViewPos, SOUND_HIT, Mask);
+	}
+
+	GameServer()->CreateSound(m_Pos, SOUND_PLAYER_PAIN_SHORT);
+
+	m_EmoteType = EMOTE_PAIN;
+	m_EmoteStop = Server()->Tick() + 500 * Server()->TickSpeed() / 1000;
+
+	char aBuf[256];
+	str_format(aBuf, sizeof(aBuf), "freeze freezer='%d:%s' victim='%d:%s' weapon=%d",
+		From, Server()->ClientName(From),
+		m_pPlayer->GetCID(), Server()->ClientName(m_pPlayer->GetCID()), Weapon);
+	GameServer()->Console()->Print(IConsole::OUTPUT_LEVEL_DEBUG, "game", aBuf);
+
+	// send the kill message
+	CNetMsg_Sv_KillMsg Msg;
+	Msg.m_Killer = From;
+	Msg.m_Victim = m_pPlayer->GetCID();
+	Msg.m_Weapon = Weapon;
+	Msg.m_ModeSpecial = 0;
+	Server()->SendPackMsg(&Msg, MSGFLAG_VITAL, -1);
+	m_AlterKiller = From;
+
+}
+
+void CCharacter::Defrost()
+{
+	m_Frozen = false;
+	m_aWeapons[WEAPON_NINJA].m_Got = false;
+	m_ActiveWeapon = m_LastWeapon;
+	m_AlterKiller = -1;
+	SetWeapon(m_ActiveWeapon);
+}
+
+void CCharacter::HandleFrost()
+{
+	if(!m_Frozen)
+		return;
+
+	// TODO: put freeze duration in config
+
+	int TotalFrozenTicks = 10000 * Server()->TickSpeed() / 1000;
+	int ServerTick = Server()->Tick();
+	int CurrentTicks = ServerTick - m_FreezeStartTick;
+
+	if (CurrentTicks > TotalFrozenTicks)
+	{
+		Defrost();
+		return;
+	}
+
+	float Progress = CurrentTicks / (float)TotalFrozenTicks;
+	m_Ninja.m_ActivationTick = ServerTick - (Progress * (g_pData->m_Weapons.m_Ninja.m_Duration * Server()->TickSpeed() / 1000));
+}
+
+void CCharacter::HandleHook()
+{
+	if (m_Frozen &&
+		!GameServer()->m_pController->IsFriendlyFire(m_Core.m_HookedPlayer, m_pPlayer->GetCID()) &&
+		m_Core.m_HookedPlayer >= 0 &&
+		m_Core.m_HookTick >= (300 * Server()->TickSpeed() / 1000))
+	{
+		CPlayer *HookedPlayer = GameServer()->m_apPlayers[m_Core.m_HookedPlayer];
+		if (HookedPlayer)
+		{
+			CCharacter *HookedChar = HookedPlayer->GetCharacter();
+			if (HookedChar)
+			{
+				HookedChar->m_AlterKiller = m_pPlayer->GetCID();
+			}
+		}
+	}
+}
+
+void CCharacter::DieInAlter(int Collision)
+{
+	if (!m_Frozen || m_AlterKiller < 0) {
+		Die(m_pPlayer->GetCID(), WEAPON_WORLD);
+		return;
+	}
+
+	if (Collision&CCollision::COLFLAG_ALTAR) {
+		Die(m_AlterKiller, WEAPON_NINJA);
+		GameServer()->CreateSoundGlobal(SOUND_CTF_CAPTURE);
+	} else if (Collision&CCollision::COLFLAG_ALTAR_RED) {
+		Die(m_AlterKiller, WEAPON_NINJA);
+		GameServer()->CreateSoundGlobal(SOUND_CTF_CAPTURE);
+	} else if (Collision&CCollision::COLFLAG_ALTAR_BLUE) {
+		Die(m_AlterKiller, WEAPON_NINJA);
+		GameServer()->CreateSoundGlobal(SOUND_CTF_CAPTURE);
+	}
+
+	if (m_AlterKiller >= 0 && m_AlterKiller != m_pPlayer->GetCID() && GameServer()->m_apPlayers[m_AlterKiller])
+	{
+		CCharacter *pChr = GameServer()->m_apPlayers[m_AlterKiller]->GetCharacter();
+		if (pChr)
+		{
+			pChr->m_EmoteType = EMOTE_HAPPY;
+			pChr->m_EmoteStop = Server()->Tick() + Server()->TickSpeed();
+		}
+	}
 }
